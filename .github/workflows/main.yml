@@ -7,21 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
+
     steps:
       - name: Install Dependencies
         run: sudo apt update && sudo apt install -y unzip openssh-server
 
-      # ─────── Alternative 1: npm install ─────────
-      - name: Install LocalXpose via npm
-        run: npm install -g loclx
-
-      # ─────── Alternative 2: Static Binary ──────
-      # - name: Download & Install LocalXpose Binary
-      #   run: |
-      #     wget https://api.localxpose.io/api/v2/downloads/loclx-linux-amd64.zip -O loclx.zip
-      #     unzip loclx.zip
-      #     chmod +x loclx
-      #     sudo mv loclx /usr/local/bin/
+      - name: Install LocalXpose CLI
+        run: sudo npm install -g loclx           # ensures `loclx` is in /usr/local/bin
 
       - name: Enable SSH Server
         run: |

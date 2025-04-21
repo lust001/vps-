@@ -5,30 +5,24 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    env:
+      ACCESS_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
     steps:
-    - name: Install Dependencies
-      run: sudo apt update && sudo apt install -y wget unzip openssh-server
-
-    - name: Download LocalXpose
-      run: wget https://localxpose.io/releases/localxpose-linux-amd64.zip -O localxpose.zip
-
-    - name: Extract LocalXpose
-      run: unzip localxpose.zip && chmod +x lx
-
-    - name: Authenticate LocalXpose
-      run: ./lx auth ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
-
-    - name: Enable SSH Server
-      run: sudo systemctl start ssh && sudo systemctl enable ssh
-
-    - name: Set Default Password
-      run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
-
-    - name: Allow SSH Login
-      run: |
-        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-        sudo systemctl restart ssh
-
-    - name: Create Tunnel using LocalXpose
-      run: ./lx tunnel tcp --port 22
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y snapd                # Ensure snap is available
+      - name: Install LocalXpose
+        run: sudo snap install localxpose         # Installs v24.9.2 via Snap :contentReference[oaicite:6]{index=6}
+      - name: Enable SSH Server
+        run: |
+          sudo systemctl start ssh
+          sudo systemctl enable ssh
+      - name: Set Default Password
+        run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
+      - name: Allow SSH Login
+        run: |
+          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo systemctl restart ssh
+      - name: Start LocalXpose Tunnel
+        run: loclx tunnel tcp --port 22           # Uses ACCESS_TOKEN for auth :contentReference[oaicite:7]{index=7}

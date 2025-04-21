@@ -8,14 +8,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    services:
-      ssh-server:
-        image: rastasheep/ubuntu-sshd:18.04
-        env:
-          ROOT_PASSWORD: P@ssw0rd!
-        ports:
-          - 2222:22
-        options: --health-cmd "nc -z localhost 22 || exit 1" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -24,9 +16,20 @@ jobs:
         run: |
           sudo apt update
           sudo apt remove -y containerd containerd.io || true
-          sudo apt install -y --fix-broken wget nmap docker.io jq
-          sudo systemctl start docker
-          sudo systemctl enable docker
+          sudo apt install -y --fix-broken wget nmap openssh-server cloudflared
+          sudo systemctl start ssh
+          sudo systemctl enable ssh
+
+      - name: Configure SSH Server
+        run: |
+          echo "=== Configuring SSH ==="
+          sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
+          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          echo "root:P@ssw0rd!" | sudo chpasswd
+          sudo ssh-keygen -A
+          sudo systemctl restart ssh
+          sleep 5
+          sudo ss -tuln | grep 2222 || echo "SSHD not listening on 2222"
 
       - name: Show Runner IP
         run: |
@@ -35,19 +38,6 @@ jobs:
           echo ""
           echo "=== Runner Internal IP ==="
           ip addr show | grep inet || echo "Failed to get internal IP"
-
-      - name: Debug SSH Server Container
-        run: |
-          echo "=== Docker Containers ==="
-          docker ps -a || echo "Docker ps failed"
-          echo "=== SSH Server Logs ==="
-          docker logs ssh-server || echo "No logs available"
-          echo "=== Container Network ==="
-          docker inspect ssh-server | jq -r '.[] | .NetworkSettings.IPAddress' || echo "No IP address found"
-          echo "=== Container Ports ==="
-          docker inspect ssh-server | jq -r '.[] | .NetworkSettings.Ports' || echo "No port info"
-          echo "=== Health Status ==="
-          docker inspect ssh-server | jq -r '.[] | .State.Health.Status' || echo "No health status"
 
       - name: Verify SSH Server
         run: |
@@ -63,15 +53,6 @@ jobs:
             ssh -v -p 2222 -o StrictHostKeyChecking=no root@localhost whoami && break || echo "SSH attempt $i failed"
             sleep 5
           done
-
-      - name: Install Cloudflared CLI
-        run: |
-          sudo mkdir -p --mode=0755 /usr/share/keyrings
-          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-          echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared focal main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
-          sudo apt update
-          sudo apt install -y cloudflared
-          cloudflared --version
 
       - name: Launch Cloudflare Quick Tunnel & Keep Alive
         run: |

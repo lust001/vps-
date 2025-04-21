@@ -29,18 +29,39 @@ jobs:
             sudo apt install -f -y
           fi
           cloudflared --version
-          sudo systemctl start ssh
-          sudo systemctl enable ssh
+          sudo systemctl start ssh || sudo systemctl start sshd
+          sudo systemctl enable ssh || sudo systemctl enable sshd
 
       - name: Configure SSH Server
         run: |
           echo "=== Configuring SSH ==="
-          sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
-          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          # Ensure Port 2222 is set
+          if grep -q "^Port" /etc/ssh/sshd_config; then
+            sudo sed -i 's/^Port .*/Port 2222/' /etc/ssh/sshd_config
+          else
+            echo "Port 2222" | sudo tee -a /etc/ssh/sshd_config
+          fi
+          # Ensure PermitRootLogin is set
+          if grep -q "^PermitRootLogin" /etc/ssh/sshd_config; then
+            sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
+          else
+            echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+          fi
+          # Debug: Show sshd_config
+          echo "=== /etc/ssh/sshd_config ==="
+          sudo cat /etc/ssh/sshd_config
+          # Set root password
           echo "root:P@ssw0rd!" | sudo chpasswd
+          # Generate host keys
           sudo ssh-keygen -A
-          sudo systemctl restart ssh
+          # Restart SSH service
+          sudo systemctl restart ssh || sudo systemctl restart sshd
           sleep 5
+          # Check SSHD status
+          echo "=== SSHD Status ==="
+          sudo systemctl status ssh || sudo systemctl status sshd
+          # Check listening port
+          echo "=== Listening Ports ==="
           sudo ss -tuln | grep 2222 || echo "SSHD not listening on 2222"
 
       - name: Show Runner IP

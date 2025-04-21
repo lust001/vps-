@@ -9,35 +9,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Install Dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y openssh-server autossh
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y openssh-server autossh
 
-    - name: Start & Enable SSH
-      run: |
-        sudo systemctl start ssh
-        sudo systemctl enable ssh
+      - name: Start & Enable SSH
+        run: |
+          sudo systemctl start ssh
+          sudo systemctl enable ssh
 
-    - name: Create vpsuser if Missing
-      run: |
-        if ! id -u vpsuser >/dev/null 2>&1; then
-          sudo useradd -m vpsuser
-        fi
-        echo "vpsuser:P@ssw0rd!" | sudo chpasswd
+      - name: Create vpsuser if Missing
+        run: |
+          if ! id -u vpsuser >/dev/null 2>&1; then
+            sudo useradd -m vpsuser
+          fi
+          echo "vpsuser:P@ssw0rd!" | sudo chpasswd
 
-    - name: Prepare SSH Known Hosts
-      run: |
-        mkdir -p ~/.ssh                    # ensure the directory exists :contentReference[oaicite:3]{index=3}  
-        chmod 700 ~/.ssh
-        ssh-keyscan serveo.net >> ~/.ssh/known_hosts
-        chmod 600 ~/.ssh/known_hosts
+      - name: Prepare SSH Known Hosts
+        run: |
+          mkdir -p ~/.ssh                           # ensure SSH dir exists :contentReference[oaicite:6]{index=6}
+          chmod 700 ~/.ssh
+          ssh-keyscan serveo.net >> ~/.ssh/known_hosts  # whitelist Serveo :contentReference[oaicite:7]{index=7}
+          chmod 600 ~/.ssh/known_hosts
 
-    - name: Establish Serveo Reverse SSH Tunnel
-      run: |
-        autossh -M 0 \
-          -o "ServerAliveInterval 60" \
-          -o "ServerAliveCountMax 3" \
-          -o "StrictHostKeyChecking=yes" \
-          -N \
-          -R myvps:22:localhost:22 serveo.net  # expose VPS SSH on myvps.serveo.net:22 :contentReference[oaicite:4]{index=4}
+      - name: Enable Password Authentication
+        run: |
+          sudo sed -i 's/^#PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo systemctl restart ssh                    # accept password logins :contentReference[oaicite:8]{index=8}
+
+      - name: Establish Serveo Reverse SSH Tunnel
+        run: |
+          autossh -M 0 \
+            -o "ServerAliveInterval 60" \
+            -o "ServerAliveCountMax 3" \
+            -o "StrictHostKeyChecking=yes" \
+            -N \
+            -R myvps:22:localhost:22 serveo.net        # persistent reverse tunnel :contentReference[oaicite:9]{index=9}

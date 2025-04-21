@@ -3,6 +3,8 @@ name: Expose VPS via Serveo
 on:
   push:
   workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # Run every 6 hours
 
 jobs:
   expose-ssh:
@@ -12,12 +14,13 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y openssh-server autossh
+        sudo apt install -y openssh-server autossh sshpass
 
     - name: Start & Enable SSH
       run: |
         sudo systemctl start ssh
         sudo systemctl enable ssh
+        sudo systemctl status ssh --no-pager  # Debug: Check SSH service status
 
     - name: Configure SSH for Password Authentication
       run: |
@@ -29,16 +32,28 @@ jobs:
       env:
         VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
       run: |
+        if [ -z "$VPS_PASSWORD" ]; then
+          echo "Error: VPS_PASSWORD secret is not set or is empty"
+          exit 1
+        fi
         if ! id -u vpsuser >/dev/null 2>&1; then
           sudo useradd -m vpsuser
         fi
         echo "vpsuser:$VPS_PASSWORD" | sudo chpasswd
+        # Debug: Verify user creation
+        id vpsuser || exit 1
+
+    - name: Test Local SSH Login
+      env:
+        VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      run: |
+        sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no vpsuser@localhost whoami || exit 1
 
     - name: Prepare SSH Known Hosts
       run: |
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
-        ssh-keyscan -H serveo.net 138.68.79.95 >> ~/.ssh/known_hosts
+        ssh-keyscan -H serveo.net >> ~/.ssh/known_hosts
         chmod 600 ~/.ssh/known_hosts
         cat ~/.ssh/known_hosts  # Debug: Verify known_hosts
 
@@ -50,11 +65,15 @@ jobs:
           -o "StrictHostKeyChecking=yes" \
           -N \
           -R myvps:22:localhost:22 serveo.net &
+        # Debug: Wait briefly and check autossh
+        sleep 5
+        ps aux | grep autossh || exit 1
 
     - name: Keep Job Running and Verify Tunnel
       run: |
-        sleep 10  # Wait for tunnel to establish
+        sleep 10  # Wait for tunnel to stabilize
         ps aux | grep autossh  # Verify autossh is running
-        # Keep the job running indefinitely
+        # Debug: Check if tunnel is reachable
+        curl -s -I http://myvps.serveo.net || echo "Warning: Tunnel may not be active"
         echo "Keeping job alive to maintain Serveo tunnel..."
         sleep infinity

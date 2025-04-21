@@ -1,4 +1,4 @@
-name: Linux VPS Setup (Openport)
+name: Linux VPS Setup with LocalXpose
 
 on: [push, workflow_dispatch]
 
@@ -7,20 +7,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Install SSH Server & Openport CLI
-      run: |
-        sudo apt update
-        sudo apt install -y openssh-server                      # Install SSH server :contentReference[oaicite:9]{index=9}
-        wget https://openport.io/download/debian64/latest.deb
-        sudo dpkg -i latest.deb                                  # Install Openport client :contentReference[oaicite:10]{index=10}
+    - name: Install Dependencies
+      run: sudo apt update && sudo apt install -y wget unzip openssh-server
 
-    - name: Configure SSH for Password Authentication
-      run: |
-        echo "runner:P@ssw0rd!" | sudo chpasswd                 # Set runner password :contentReference[oaicite:11]{index=11}
-        sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-        sudo systemctl restart ssh                              # Enable password login :contentReference[oaicite:12]{index=12}
+    - name: Download LocalXpose
+      run: wget https://localxpose.io/releases/localxpose-linux-amd64.zip -O localxpose.zip
 
-    - name: Start Openport SSH Tunnel
+    - name: Extract LocalXpose
+      run: unzip localxpose.zip && chmod +x lx
+
+    - name: Authenticate LocalXpose
+      run: ./lx auth ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
+
+    - name: Enable SSH Server
+      run: sudo systemctl start ssh && sudo systemctl enable ssh
+
+    - name: Set Default Password
+      run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
+
+    - name: Allow SSH Login
       run: |
-        nohup openport 22 &                                      # Tunnel port 22 :contentReference[oaicite:13]{index=13}
-        sleep infinity                                          # Keep the runner alive
+        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+        sudo systemctl restart ssh
+
+    - name: Create Tunnel using LocalXpose
+      run: ./lx tunnel tcp --port 22

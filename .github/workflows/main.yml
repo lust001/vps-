@@ -1,4 +1,4 @@
-name: Linux VPS Setup with LocalXpose
+name: Linux VPS Setup with Cloudflare Tunnel
 
 on:
   push:
@@ -17,12 +17,10 @@ jobs:
           USER_NAME: runneradmin
           USER_PASSWORD: P@ssw0rd!
           TZ: Etc/UTC
-          PASSWORD_ACCESS: "true"  # Enable password authentication
-          SUDO_ACCESS: "false"    # Disable sudo for security
+          PASSWORD_ACCESS: "true"
+          SUDO_ACCESS: "false"
         ports:
           - 2222:2222
-    env:
-      LOCX_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}  # Use LOCX_TOKEN for LocalXpose
 
     steps:
       - uses: actions/checkout@v4
@@ -30,28 +28,39 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget unzip nmap
+          sudo apt install -y wget nmap
 
-      - name: Install LocalXpose CLI
+      - name: Show Runner IP
         run: |
-          wget https://api.localxpose.io/api/v2/downloads/loclx-linux-amd64.zip -O loclx.zip
-          unzip loclx.zip
-          chmod +x loclx
-          sudo mv loclx /usr/local/bin/
+          echo "=== Runner External IP ==="
+          curl -s https://api.ipify.org
+          echo ""
+          echo "=== Runner Internal IP ==="
+          ip addr show | grep inet
+
+      - name: Install Cloudflared CLI
+        run: |
+          sudo mkdir -p --mode=0755 /usr/share/keyrings
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+          echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared focal main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+          sudo apt update
+          sudo apt install -y cloudflared
+          cloudflared --version
 
       - name: Verify SSH Server
         run: |
-          # Wait for SSH server to be ready
           sleep 10
           nmap ssh-server -p 2222
           ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami || echo "SSH test failed, continuing..."
 
-      - name: Launch Tunnel & Keep Alive
+      - name: Launch Cloudflare Quick Tunnel & Keep Alive
         run: |
-          # Start LocalXpose tunnel
-          loclx tunnel tcp --to ssh-server:2222 --raw-mode > tunnel.log 2>&1 &
+          cloudflared tunnel --url ssh://ssh-server:2222 > tunnel.log 2>&1 &
           sleep 15
           echo "=== Tunnel Endpoint ==="
-          grep -Eo '([a-z0-9]+\.loclx\.io:[0-9]{4,5})' tunnel.log || cat tunnel.log
-          ps aux | grep loclx || echo "No loc lx process found"
-          sleep infinity
+          grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log || cat tunnel.log
+          ps aux | grep cloudflared || echo "No cloudflared process found"
+          for i in {1..360}; do
+            ps aux | grep cloudflared || echo "cloudflared process stopped"
+            sleep 60
+          done

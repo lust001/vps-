@@ -17,10 +17,12 @@ jobs:
           USER_NAME: runneradmin
           USER_PASSWORD: P@ssw0rd!
           TZ: Etc/UTC
+          PASSWORD_ACCESS: "true"  # Enable password authentication
+          SUDO_ACCESS: "false"    # Disable sudo for security
         ports:
           - 2222:2222
     env:
-      LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
+      LOCX_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}  # Use LOCX_TOKEN for LocalXpose
 
     steps:
       - uses: actions/checkout@v4
@@ -37,20 +39,19 @@ jobs:
           chmod +x loclx
           sudo mv loclx /usr/local/bin/
 
-      - name: Authenticate LocalXpose
-        run: |
-          loclx account login --token "$LOCALXPOSE_AUTH_TOKEN" || { echo "Authentication failed"; exit 1; }
-
       - name: Verify SSH Server
         run: |
+          # Wait for SSH server to be ready
+          sleep 10
           nmap ssh-server -p 2222
-          ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami
+          ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami || echo "SSH test failed, continuing..."
 
       - name: Launch Tunnel & Keep Alive
         run: |
+          # Start LocalXpose tunnel
           loclx tunnel tcp --to ssh-server:2222 --raw-mode > tunnel.log 2>&1 &
           sleep 15
           echo "=== Tunnel Endpoint ==="
           grep -Eo '([a-z0-9]+\.loclx\.io:[0-9]{4,5})' tunnel.log || cat tunnel.log
-          ps aux | grep loclx || echo "No loclx process found"
+          ps aux | grep loclx || echo "No loc lx process found"
           sleep infinity

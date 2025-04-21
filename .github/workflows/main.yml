@@ -14,7 +14,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y openssh-server autossh sshpass
+        sudo apt install -y openssh-server autossh sshpass netcat-openbsd
 
     - name: Start & Enable SSH
       run: |
@@ -23,6 +23,8 @@ jobs:
         sudo systemctl status ssh --no-pager  # Debug: Check SSH service status
         # Debug: Verify SSH port is listening
         sudo netstat -tuln | grep :22 || exit 1
+        # Debug: Check if localhost:22 is reachable
+        nc -zv localhost 22 || exit 1
 
     - name: Configure SSH for Password Authentication
       run: |
@@ -49,7 +51,7 @@ jobs:
       env:
         VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
       run: |
-        sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no vpsuser@localhost whoami || exit 1
+        sshpass -p "$VPS_PASSWORD" ssh -v -o StrictHostKeyChecking=no vpsuser@localhost whoami || exit 1
 
     - name: Prepare SSH Known Hosts
       run: |
@@ -61,7 +63,6 @@ jobs:
 
     - name: Establish Serveo Reverse SSH Tunnel
       run: |
-        # Run autossh with verbose output and log to file
         autossh -M 0 \
           -v \
           -o "ServerAliveInterval 60" \
@@ -76,13 +77,14 @@ jobs:
 
     - name: Keep Job Running and Verify Tunnel
       run: |
-        sleep 30  # Wait longer for tunnel to stabilize
+        sleep 30  # Wait for tunnel to stabilize
         ps aux | grep autossh  # Verify autossh is running
-        # Debug: Check tunnel status multiple times
-        for i in {1..3}; do
+        # Debug: Periodic tunnel checks
+        for i in {1..5}; do
           echo "Tunnel check attempt $i:"
           curl -s -I http://myvps.serveo.net || echo "Warning: Tunnel may not be active"
-          sleep 5
+          ps aux | grep autossh  # Check if autossh is still running
+          sleep 10
         done
         echo "Keeping job alive to maintain Serveo tunnel..."
         sleep infinity

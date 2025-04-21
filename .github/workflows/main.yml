@@ -7,6 +7,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
+    services:
+      ssh-server:
+        image: linuxserver/openssh-server
+        env:
+          PUID: 1000
+          PGID: 1000
+          USER_NAME: runneradmin
+          USER_PASSWORD: P@ssw0rd!
+          TZ: Etc/UTC
+        ports:
+          - 2222:2222
     env:
       LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
 
@@ -16,35 +28,29 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget unzip openssh-server
+          sudo apt install -y wget unzip nmap
 
-      - name: Install LocalXpose CLI (Static Binary)
+      - name: Install LocalXpose CLI
         run: |
-          # Download the latest Linux x86_64 client
           wget https://api.localxpose.io/api/v2/downloads/loclx-linux-amd64.zip -O loclx.zip
           unzip loclx.zip
           chmod +x loclx
           sudo mv loclx /usr/local/bin/
 
-      - name: Start & Configure SSH
-        run: |
-          sudo systemctl start ssh
-          sudo systemctl enable ssh
-          echo "runneradmin:P@ssw0rd!" | sudo chpasswd
-          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-          sudo systemctl restart ssh
-
       - name: Authenticate LocalXpose
         run: |
-          loclx account login --token "$LOCALXPOSE_AUTH_TOKEN"
+          loclx account login --token "$LOCALXPOSE_AUTH_TOKEN" || { echo "Authentication failed"; exit 1; }
+
+      - name: Verify SSH Server
+        run: |
+          nmap ssh-server -p 2222
+          ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami
 
       - name: Launch Tunnel & Keep Alive
         run: |
-          # Start tunnel in raw mode so it outputs a single-line endpoint, and log it
-          loclx tunnel tcp --to 127.0.0.1:22 --raw-mode > tunnel.log 2>&1 &
-          sleep 5
+          loclx tunnel tcp --to ssh-server:2222 --raw-mode > tunnel.log 2>&1 &
+          sleep 15
           echo "=== Tunnel Endpoint ==="
-          # Show the host:port that you can SSH into
           grep -Eo '([a-z0-9]+\.loclx\.io:[0-9]{4,5})' tunnel.log || cat tunnel.log
-          # Block indefinitely so the runner (and tunnel) stay up
+          ps aux | grep loclx || echo "No loclx process found"
           sleep infinity

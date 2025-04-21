@@ -28,7 +28,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget nmap
+          sudo apt install -y wget nmap docker.io
 
       - name: Show Runner IP
         run: |
@@ -37,6 +37,15 @@ jobs:
           echo ""
           echo "=== Runner Internal IP ==="
           ip addr show | grep inet
+
+      - name: Debug SSH Server Container
+        run: |
+          echo "=== Docker Containers ==="
+          docker ps -a
+          echo "=== SSH Server Logs ==="
+          docker logs ssh-server || echo "No logs available"
+          echo "=== Network Configuration ==="
+          docker inspect ssh-server | grep -i network || echo "No network info"
 
       - name: Install Cloudflared CLI
         run: |
@@ -49,8 +58,10 @@ jobs:
 
       - name: Verify SSH Server
         run: |
-          sleep 10
-          nmap ssh-server -p 2222
+          sleep 30
+          echo "=== Resolving ssh-server ==="
+          ping -c 4 ssh-server || echo "Ping failed"
+          nmap ssh-server -p 2222 || echo "Nmap failed"
           ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami || echo "SSH test failed, continuing..."
 
       - name: Launch Cloudflare Quick Tunnel & Keep Alive
@@ -59,8 +70,8 @@ jobs:
           sleep 15
           echo "=== Tunnel Endpoint ==="
           grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log || cat tunnel.log
-          ps aux | grep cloudflared || echo "No cloudflared process found"
+          ps aux | grep '[c]loudflared' || echo "No cloudflared process found"
           for i in {1..360}; do
-            ps aux | grep cloudflared || echo "cloudflared process stopped"
+            ps aux | grep '[c]loudflared' || echo "cloudflared process stopped"
             sleep 60
           done

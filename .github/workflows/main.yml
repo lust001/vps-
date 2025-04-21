@@ -8,23 +8,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}  # Access token from your repo's Secrets :contentReference[oaicite:10]{index=10}
+      LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install OpenSSH Server
+      - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y openssh-server unzip
+          sudo apt install -y wget unzip openssh-server
 
-      - name: Install LocalXpose CLI via npm
-        run: npm install -g loclx      # places `loclx` into a PATH’ed folder :contentReference[oaicite:11]{index=11}
+      - name: Install LocalXpose CLI (Static Binary)
+        run: |
+          # Download the latest Linux x86_64 client
+          wget https://api.localxpose.io/api/v2/downloads/loclx-linux-amd64.zip -O loclx.zip
+          unzip loclx.zip
+          chmod +x loclx
+          sudo mv loclx /usr/local/bin/
 
       - name: Start & Configure SSH
         run: |
@@ -35,12 +35,16 @@ jobs:
           sudo systemctl restart ssh
 
       - name: Authenticate LocalXpose
-        run: loclx account login --token "$LOCALXPOSE_AUTH_TOKEN"
+        run: |
+          loclx account login --token "$LOCALXPOSE_AUTH_TOKEN"
 
       - name: Launch Tunnel & Keep Alive
         run: |
-          loclx tunnel tcp --to 127.0.0.1:22 &   # start in background
-          sleep 5                                # wait for URL to appear
-          echo "Tunnel endpoint:" 
-          grep -Eo '([a-z0-9]+\.loclx\.io:[0-9]{4,5})' <(loclx tunnel list)  
-          sleep infinity                         # block forever :contentReference[oaicite:12]{index=12}
+          # Start tunnel in raw mode so it outputs a single-line endpoint, and log it
+          loclx tunnel tcp --to 127.0.0.1:22 --raw-mode > tunnel.log 2>&1 &
+          sleep 5
+          echo "=== Tunnel Endpoint ==="
+          # Show the host:port that you can SSH into
+          grep -Eo '([a-z0-9]+\.loclx\.io:[0-9]{4,5})' tunnel.log || cat tunnel.log
+          # Block indefinitely so the runner (and tunnel) stay up
+          sleep infinity

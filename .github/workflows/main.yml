@@ -8,56 +8,39 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
+      LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}  # Access token from your repo's Secrets :contentReference[oaicite:10]{index=10}
 
     steps:
-      # 1. Checkout code (required for setup-node)
       - uses: actions/checkout@v4
 
-      # 2. Setup Node.js and npm global bin in PATH
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'           # or choose '20', etc. :contentReference[oaicite:11]{index=11}
+          node-version: '18'
 
-      # 3. Install SSH server dependencies
-      - name: Install SSH Server
+      - name: Install OpenSSH Server
         run: |
           sudo apt update
           sudo apt install -y openssh-server unzip
 
-      # 4. Install LocalXpose CLI (choose ONE)
-      # ────────────────────────────────────────────────────────────
-      # Option A: Snap
-      - name: Install LocalXpose via Snap
-        run: sudo snap install localxpose      # Official Snap package :contentReference[oaicite:12]{index=12}
+      - name: Install LocalXpose CLI via npm
+        run: npm install -g loclx      # places `loclx` into a PATH’ed folder :contentReference[oaicite:11]{index=11}
 
-      # Option B: npm CLI
-      #- name: Install LocalXpose via npm
-      #  run: npm install -g loclx              # Official npm package :contentReference[oaicite:13]{index=13}
-
-      # Option C: @localxpose/bin
-      #- name: Install LocalXpose via @localxpose/bin
-      #  run: npm install @localxpose/bin       # Community wrapper :contentReference[oaicite:14]{index=14}
-
-      # 5. Start and configure SSH
-      - name: Enable SSH Server
+      - name: Start & Configure SSH
         run: |
           sudo systemctl start ssh
           sudo systemctl enable ssh
-
-      - name: Set Default Password
-        run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
-
-      - name: Permit Root Login
-        run: |
+          echo "runneradmin:P@ssw0rd!" | sudo chpasswd
           sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
           sudo systemctl restart ssh
 
-      # 6. Authenticate LocalXpose
       - name: Authenticate LocalXpose
-        run: loclx account login --token "$LOCALXPOSE_AUTH_TOKEN"   # Uses non‑interactive login :contentReference[oaicite:15]{index=15}
+        run: loclx account login --token "$LOCALXPOSE_AUTH_TOKEN"
 
-      # 7. Open TCP Tunnel for SSH
-      - name: Start LocalXpose Tunnel
-        run: loclx tunnel tcp --port 22                              # Exposes SSH via TCP tunnel :contentReference[oaicite:16]{index=16}
+      - name: Launch Tunnel & Keep Alive
+        run: |
+          loclx tunnel tcp --to 127.0.0.1:22 &   # start in background
+          sleep 5                                # wait for URL to appear
+          echo "Tunnel endpoint:" 
+          grep -Eo '([a-z0-9]+\.loclx\.io:[0-9]{4,5})' <(loclx tunnel list)  
+          sleep infinity                         # block forever :contentReference[oaicite:12]{index=12}

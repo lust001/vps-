@@ -15,8 +15,20 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt remove -y containerd containerd.io || true
-          sudo apt install -y --fix-broken wget nmap openssh-server cloudflared
+          sudo apt remove -y containerd containerd.io docker.io docker-ce || true
+          sudo apt install -y --fix-broken wget nmap openssh-server
+          # Install cloudflared
+          sudo mkdir -p --mode=0755 /usr/share/keyrings
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+          echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared noble main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+          sudo apt update
+          if ! sudo apt install -y cloudflared; then
+            echo "Falling back to manual cloudflared installation"
+            wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+            sudo dpkg -i cloudflared-linux-amd64.deb
+            sudo apt install -f -y
+          fi
+          cloudflared --version
           sudo systemctl start ssh
           sudo systemctl enable ssh
 

@@ -28,20 +28,23 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget nmap docker.io
+          sudo apt remove -y containerd containerd.io || true
+          sudo apt install -y --fix-broken wget nmap docker.io
+          sudo systemctl start docker
+          sudo systemctl enable docker
 
       - name: Show Runner IP
         run: |
           echo "=== Runner External IP ==="
-          curl -s https://api.ipify.org
+          curl -s https://api.ipify.org || echo "Failed to get external IP"
           echo ""
           echo "=== Runner Internal IP ==="
-          ip addr show | grep inet
+          ip addr show | grep inet || echo "Failed to get internal IP"
 
       - name: Debug SSH Server Container
         run: |
           echo "=== Docker Containers ==="
-          docker ps -a
+          docker ps -a || echo "Docker ps failed"
           echo "=== SSH Server Logs ==="
           docker logs ssh-server || echo "No logs available"
           echo "=== Network Configuration ==="
@@ -58,11 +61,18 @@ jobs:
 
       - name: Verify SSH Server
         run: |
-          sleep 30
-          echo "=== Resolving ssh-server ==="
-          ping -c 4 ssh-server || echo "Ping failed"
+          echo "=== Waiting for ssh-server ==="
+          for i in {1..6}; do
+            sleep 10
+            ping -c 2 ssh-server && break || echo "Ping attempt $i failed"
+          done
+          echo "=== Nmap Scan ==="
           nmap ssh-server -p 2222 || echo "Nmap failed"
-          ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami || echo "SSH test failed, continuing..."
+          echo "=== SSH Test ==="
+          for i in {1..3}; do
+            ssh -v -p 2222 -o StrictHostKeyChecking=no runneradmin@ssh-server whoami && break || echo "SSH attempt $i failed"
+            sleep 5
+          done
 
       - name: Launch Cloudflare Quick Tunnel & Keep Alive
         run: |

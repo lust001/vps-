@@ -1,8 +1,5 @@
-# .github/workflows/main.yml
+name: Linux VPS Setup (Serveo)
 
-name: Linux VPS Setup (localhost.run)
-
-# Trigger on push or manual dispatch
 on:
   push: {}
   workflow_dispatch: {}
@@ -12,29 +9,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Install OpenSSH server & client
+      # 1. Install SSH server & client
       - name: Install SSH Server and Client
         run: |
           sudo apt update
           sudo apt install -y openssh-server openssh-client
-      # 2. Start and enable SSH
-      - name: Enable and Start SSH
+
+      # 2. Enable and start SSH
+      - name: Enable SSH
         run: |
           sudo systemctl enable ssh
           sudo systemctl start ssh
-      # 3. Set default user password
+
+      # 3. Set default password
       - name: Set Default Password
         run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
-      # 4. Allow password and root login over SSH
-      - name: Allow Password and Root SSH Login
+
+      # 4. Allow password and root login
+      - name: Configure SSH for Password Login
         run: |
           sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
           sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/'       /etc/ssh/sshd_config
           sudo systemctl restart ssh
-      # 5. Create reverse SSH tunnel via localhost.run
-      - name: Create SSH Reverse Tunnel (localhost.run)
+
+      # 5. Start reverse SSH tunnel via Serveo
+      - name: Start SSH Reverse Tunnel (Serveo)
         run: |
-          ssh -o StrictHostKeyChecking=no \
-              -o ServerAliveInterval=60 \
-              -o ServerAliveCountMax=3 \
-              -R 0:localhost:22 nokey@ssh.localhost.run
+          nohup ssh -o StrictHostKeyChecking=no \
+                    -o ServerAliveInterval=60 \
+                    -o ServerAliveCountMax=3 \
+                    -R 0:localhost:22 serveo.net &
+
+          # Keep the job alive so the tunnel stays up (max 6 hrs on GH Actions)
+          sleep infinity

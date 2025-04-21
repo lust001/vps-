@@ -21,6 +21,8 @@ jobs:
         sudo systemctl start ssh
         sudo systemctl enable ssh
         sudo systemctl status ssh --no-pager  # Debug: Check SSH service status
+        # Debug: Verify SSH port is listening
+        sudo netstat -tuln | grep :22 || exit 1
 
     - name: Configure SSH for Password Authentication
       run: |
@@ -59,21 +61,28 @@ jobs:
 
     - name: Establish Serveo Reverse SSH Tunnel
       run: |
+        # Run autossh with verbose output and log to file
         autossh -M 0 \
+          -v \
           -o "ServerAliveInterval 60" \
           -o "ServerAliveCountMax 3" \
           -o "StrictHostKeyChecking=yes" \
           -N \
-          -R myvps:22:localhost:22 serveo.net &
-        # Debug: Wait briefly and check autossh
-        sleep 5
+          -R myvps:22:localhost:22 serveo.net > autossh.log 2>&1 &
+        # Debug: Wait and check autossh
+        sleep 10
         ps aux | grep autossh || exit 1
+        cat autossh.log  # Debug: Show autossh output
 
     - name: Keep Job Running and Verify Tunnel
       run: |
-        sleep 10  # Wait for tunnel to stabilize
+        sleep 30  # Wait longer for tunnel to stabilize
         ps aux | grep autossh  # Verify autossh is running
-        # Debug: Check if tunnel is reachable
-        curl -s -I http://myvps.serveo.net || echo "Warning: Tunnel may not be active"
+        # Debug: Check tunnel status multiple times
+        for i in {1..3}; do
+          echo "Tunnel check attempt $i:"
+          curl -s -I http://myvps.serveo.net || echo "Warning: Tunnel may not be active"
+          sleep 5
+        done
         echo "Keeping job alive to maintain Serveo tunnel..."
         sleep infinity

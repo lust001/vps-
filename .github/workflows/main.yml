@@ -6,23 +6,38 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      ACCESS_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
+      LOCALXPOSE_AUTH_TOKEN: ${{ secrets.LOCALXPOSE_AUTH_TOKEN }}
     steps:
       - name: Install Dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y snapd                # Ensure snap is available
-      - name: Install LocalXpose
-        run: sudo snap install localxpose         # Installs v24.9.2 via Snap :contentReference[oaicite:6]{index=6}
+        run: sudo apt update && sudo apt install -y unzip openssh-server
+
+      # ─────── Alternative 1: npm install ─────────
+      - name: Install LocalXpose via npm
+        run: npm install -g loclx
+
+      # ─────── Alternative 2: Static Binary ──────
+      # - name: Download & Install LocalXpose Binary
+      #   run: |
+      #     wget https://api.localxpose.io/api/v2/downloads/loclx-linux-amd64.zip -O loclx.zip
+      #     unzip loclx.zip
+      #     chmod +x loclx
+      #     sudo mv loclx /usr/local/bin/
+
       - name: Enable SSH Server
         run: |
           sudo systemctl start ssh
           sudo systemctl enable ssh
+
       - name: Set Default Password
         run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
+
       - name: Allow SSH Login
         run: |
           sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
           sudo systemctl restart ssh
+
+      - name: Authenticate LocalXpose
+        run: loclx account login --token "$LOCALXPOSE_AUTH_TOKEN"
+
       - name: Start LocalXpose Tunnel
-        run: loclx tunnel tcp --port 22           # Uses ACCESS_TOKEN for auth :contentReference[oaicite:7]{index=7}
+        run: loclx tunnel tcp --port 22

@@ -1,47 +1,30 @@
 # .github/workflows/main.yml
 
-name: Linux VPS Setup (Serveo)
+name: Linux VPS Setup (Remote.it)
 
-on:
-  push: {}
-  workflow_dispatch: {}
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Install OpenSSH server & client
-      - name: Install SSH Server & Client
+      - name: Install SSH Server & remote.it CLI
         run: |
           sudo apt update
-          sudo apt install -y openssh-server openssh-client  # install both server and client :contentReference[oaicite:4]{index=4}
+          sudo apt install -y openssh-server
+          # Download and install remote.it CLI (example for Debian/Ubuntu):
+          curl -sSL https://downloads.remote.it/software/cli-install.sh | sudo bash
 
-      # 2. Remove cloud-init override so it can't override our settings
-      - name: Remove cloud-init SSH Override
+      - name: Configure SSH for Password Auth
         run: |
-          sudo rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-      # 3. Configure SSH to allow password and root login
-      - name: Configure SSH for Password Authentication
-        run: |
+          echo "runner:P@ssw0rd!" | sudo chpasswd
           sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-          sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/'       /etc/ssh/sshd_config
-          # Create a high‑precedence drop‑in to be extra sure:
-          echo -e "PasswordAuthentication yes\nPermitRootLogin yes" \
-            | sudo tee /etc/ssh/sshd_config.d/01-github-actions.conf > /dev/null
-          sudo systemctl restart ssh                            # restart daemon to apply changes :contentReference[oaicite:5]{index=5}
+          sudo systemctl restart ssh
 
-      # 4. Set a password for the built-in 'runner' user
-      - name: Set Password for runner
+      - name: Connect to Remote.it Service
+        env:
+          RMIT_DEVICE_TOKEN: ${{ secrets.REMOTE_IT_DEVICE_TOKEN }}
         run: |
-          echo "runner:P@ssw0rd!" | sudo chpasswd              # chpasswd reads user:pass from stdin :contentReference[oaicite:6]{index=6}
-
-      # 5. Create a reverse SSH tunnel via Serveo & keep the runner alive
-      - name: Create Serveo Reverse Tunnel and Sleep
-        run: |
-          nohup ssh -o StrictHostKeyChecking=no \
-                    -o ServerAliveInterval=60 \
-                    -o ServerAliveCountMax=3 \
-                    -R 0:localhost:22 serveo.net &             # request random public port :contentReference[oaicite:7]{index=7}
-          sleep infinity                                      # prevent job exit, keep tunnel open :contentReference[oaicite:8]{index=8}
+          remoteit api login --token $RMIT_DEVICE_TOKEN
+          remoteit connect --service ssh             # establishes the reverse SSH tunnel
+          sleep infinity                             # keep the runner alive

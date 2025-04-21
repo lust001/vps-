@@ -1,4 +1,4 @@
-name: Linux VPS Setup
+name: Linux VPS Setup (localhost.run)
 
 on: [push, workflow_dispatch]
 
@@ -8,27 +8,27 @@ jobs:
 
     steps:
     - name: Install Dependencies
-      run: sudo apt update && sudo apt install -y wget unzip openssh-server
-
-    - name: Download Ngrok
-      run: wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip -O ngrok.zip
-
-    - name: Extract Ngrok
-      run: unzip ngrok.zip
-
-    - name: Authenticate Ngrok
-      run: ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      run: |
+        sudo apt update \
+          && sudo apt install -y wget unzip openssh-server openssh-client
 
     - name: Enable SSH Server
-      run: sudo systemctl start ssh && sudo systemctl enable ssh
+      run: |
+        sudo systemctl start ssh \
+          && sudo systemctl enable ssh
 
-    - name: Set Default Password (Auto)
+    - name: Set Default Password
       run: echo "runneradmin:P@ssw0rd!" | sudo chpasswd
 
-    - name: Allow SSH Login
-      run: sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && sudo systemctl restart ssh
+    - name: Allow Password SSH Login
+      run: |
+        sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+        && sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
+        && sudo systemctl restart ssh
 
-    - name: Create SSH Tunnel with Ngrok
-      run: ./ngrok tcp 22 
+    - name: Create SSH Reverse Tunnel via localhost.run
+      run: |
+        ssh -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=60 \
+            -o ServerAliveCountMax=3 \
+            -R 0:localhost:22 ssh.localhost.run

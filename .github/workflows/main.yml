@@ -26,11 +26,13 @@ jobs:
         sudo systemctl restart ssh
 
     - name: Create vpsuser if Missing
+      env:
+        VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
       run: |
         if ! id -u vpsuser >/dev/null 2>&1; then
           sudo useradd -m vpsuser
         fi
-        echo "vpsuser:P@ssw0rd!" | sudo chpasswd
+        echo "vpsuser:$VPS_PASSWORD" | sudo chpasswd
 
     - name: Prepare SSH Known Hosts
       run: |
@@ -49,7 +51,10 @@ jobs:
           -N \
           -R myvps:22:localhost:22 serveo.net &
 
-    - name: Verify Serveo Tunnel
+    - name: Keep Job Running and Verify Tunnel
       run: |
-        sleep 10
-        ps aux | grep autossh
+        sleep 10  # Wait for tunnel to establish
+        ps aux | grep autossh  # Verify autossh is running
+        # Keep the job running indefinitely
+        echo "Keeping job alive to maintain Serveo tunnel..."
+        sleep infinity

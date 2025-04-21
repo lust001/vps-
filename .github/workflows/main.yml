@@ -1,0 +1,26 @@
+name: Linux VPS Setup (Openport)
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install SSH Server & Openport CLI
+      run: |
+        sudo apt update
+        sudo apt install -y openssh-server                      # Install SSH server :contentReference[oaicite:9]{index=9}
+        wget https://openport.io/download/debian64/latest.deb
+        sudo dpkg -i latest.deb                                  # Install Openport client :contentReference[oaicite:10]{index=10}
+
+    - name: Configure SSH for Password Authentication
+      run: |
+        echo "runner:P@ssw0rd!" | sudo chpasswd                 # Set runner password :contentReference[oaicite:11]{index=11}
+        sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+        sudo systemctl restart ssh                              # Enable password login :contentReference[oaicite:12]{index=12}
+
+    - name: Start Openport SSH Tunnel
+      run: |
+        nohup openport 22 &                                      # Tunnel port 22 :contentReference[oaicite:13]{index=13}
+        sleep infinity                                          # Keep the runner alive

@@ -29,40 +29,53 @@ jobs:
             sudo apt install -f -y
           fi
           cloudflared --version
-          sudo systemctl start ssh || sudo systemctl start sshd
-          sudo systemctl enable ssh || sudo systemctl enable sshd
 
       - name: Configure SSH Server
         run: |
           echo "=== Configuring SSH ==="
-          # Ensure Port 2222 is set
-          if grep -q "^Port" /etc/ssh/sshd_config; then
-            sudo sed -i 's/^Port .*/Port 2222/' /etc/ssh/sshd_config
-          else
-            echo "Port 2222" | sudo tee -a /etc/ssh/sshd_config
-          fi
-          # Ensure PermitRootLogin is set
-          if grep -q "^PermitRootLogin" /etc/ssh/sshd_config; then
-            sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
-          else
-            echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
-          fi
+          # Create a minimal sshd_config
+          sudo bash -c 'cat > /etc/ssh/sshd_config <<EOF
+          Port 2222
+          PermitRootLogin yes
+          PasswordAuthentication yes
+          AllowTcpForwarding yes
+          Subsystem sftp /usr/lib/openssh/sftp-server
+          EOF'
           # Debug: Show sshd_config
           echo "=== /etc/ssh/sshd_config ==="
           sudo cat /etc/ssh/sshd_config
+          # Test sshd_config
+          echo "=== Testing sshd_config ==="
+          sudo sshd -t || echo "SSHD config test failed"
           # Set root password
           echo "root:P@ssw0rd!" | sudo chpasswd
           # Generate host keys
           sudo ssh-keygen -A
-          # Restart SSH service
-          sudo systemctl restart ssh || sudo systemctl restart sshd
-          sleep 5
+          # Debug: Show host keys
+          echo "=== SSH Host Keys ==="
+          ls -l /etc/ssh/ssh_host_* || echo "No host keys found"
+          # Stop any existing sshd
+          sudo systemctl stop ssh || sudo systemctl stop sshd || true
+          sudo pkill -f sshd || true
+          # Start SSH service
+          echo "=== Starting SSHD ==="
+          if ! sudo systemctl start ssh && ! sudo systemctl start sshd; then
+            echo "Systemctl failed, starting sshd manually"
+            sudo /usr/sbin/sshd -D -p 2222 &
+            sleep 5
+          fi
           # Check SSHD status
           echo "=== SSHD Status ==="
-          sudo systemctl status ssh || sudo systemctl status sshd
+          sudo systemctl status ssh || sudo systemctl status sshd || echo "Systemctl status unavailable"
           # Check listening port
           echo "=== Listening Ports ==="
           sudo ss -tuln | grep 2222 || echo "SSHD not listening on 2222"
+          # Debug: Check all listening ports
+          echo "=== All Listening Ports ==="
+          sudo ss -tuln
+          # Debug: Check sshd process
+          echo "=== SSHD Process ==="
+          ps aux | grep '[s]shd' || echo "No sshd process found"
 
       - name: Show Runner IP
         run: |
